@@ -235,14 +235,27 @@ a {
   letter-spacing: .18em;
 }
 
+/* Logo + heading: desktop side-by-side */
+
+.hero-title-row {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(24px, 5vw, 70px);
+  width: 100%;
+  margin: 30px 0 25px;
+}
+
 .logo-stage {
   position: relative;
   display: flex;
+  flex: 0 0 170px;
   align-items: center;
   justify-content: center;
   width: 170px;
   height: 170px;
-  margin: 30px 0 25px;
+  margin: 0;
 }
 
 .hero-logo {
@@ -285,6 +298,8 @@ a {
 }
 
 .landing-content h1 {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   color: var(--text);
   font-family: var(--font-display);
@@ -2124,10 +2139,20 @@ arcgis-scene {
     width: calc(100% - 36px);
   }
 
+  /* Stack logo above heading on small screens */
+
+  .hero-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    margin: 25px 0;
+  }
+
   .logo-stage {
+    flex: 0 0 125px;
     width: 125px;
     height: 125px;
-    margin: 25px 0;
+    margin: 0 0 25px;
   }
 
   .hero-logo {
@@ -2146,6 +2171,7 @@ arcgis-scene {
   }
 
   .landing-content h1 {
+    flex: none;
     font-size: 2.8rem;
   }
 

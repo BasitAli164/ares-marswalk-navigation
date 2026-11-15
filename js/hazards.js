@@ -15,7 +15,28 @@ import {
 
 import { marsDistanceKm } from "./routes.js";
 
+import {
+  updateMissionHazards
+} from "./missionContext.js";
+
 const $ = (selector) => document.querySelector(selector);
+
+// --------------------------------------------------
+// MISSION CONTEXT HELPERS
+// --------------------------------------------------
+
+function isCurrentHazardRequest(requestId) {
+  return requestId === state.hazardRequestId;
+}
+
+function updateOneWayHazardContext(status, stats = null) {
+  updateMissionHazards({
+    status,
+    outbound: stats,
+    returning: null,
+    combined: null
+  });
+}
 
 // --------------------------------------------------
 // DOM HELPERS
@@ -294,12 +315,17 @@ function analyseTerrainSegments(terrain, Polyline) {
 // --------------------------------------------------
 // SINGLE-ROUTE HAZARD ASSESSMENT
 // Existing one-way functionality preserved.
+// Mission Context integration added.
 // --------------------------------------------------
 
 export async function assessRouteHazards(
   routePath,
   requestId
 ) {
+  if (!isCurrentHazardRequest(requestId)) {
+    return;
+  }
+
   const hazardLayer = getHazardLayer();
 
   const {
@@ -311,6 +337,9 @@ export async function assessRouteHazards(
     console.warn(
       "Hazard assessment dependencies are not ready."
     );
+
+    updateOneWayHazardContext("unavailable");
+
     return;
   }
 
@@ -328,6 +357,8 @@ export async function assessRouteHazards(
     "Sampling the route at additional intervals and calculating elevation-derived slope..."
   );
 
+  updateOneWayHazardContext("calculating");
+
   try {
     const densePath = densifyRoutePath(
       routePath,
@@ -341,12 +372,12 @@ export async function assessRouteHazards(
 
     const terrain = await sampleTerrain(densePath);
 
-    if (requestId !== state.hazardRequestId) return;
+    if (!isCurrentHazardRequest(requestId)) return;
 
     const { stats, graphics } =
       analyseTerrainSegments(terrain, Polyline);
 
-    if (requestId !== state.hazardRequestId) return;
+    if (!isCurrentHazardRequest(requestId)) return;
 
     hazardLayer.removeAll();
     hazardLayer.addMany(graphics);
@@ -355,6 +386,7 @@ export async function assessRouteHazards(
     setText("#hazardLow", stats.low);
     setText("#hazardModerate", stats.moderate);
     setText("#hazardHigh", stats.high);
+
     setText(
       "#hazardMaxSlope",
       `${stats.maxSlope.toFixed(1)}°`
@@ -373,6 +405,16 @@ export async function assessRouteHazards(
       `${stats.assessed} segments assessed; ${stats.skipped} segments skipped due to missing or invalid samples. Classification is based on DEM-derived slope only; it does not detect loose rocks, sand, or traction. Thresholds are prototype assumptions, not validated astronaut safety limits.`
     );
 
+    // Save actual one-way terrain statistics.
+    const missionHazardStatus = stats.skipped > 0
+      ? "partial"
+      : "complete";
+
+    updateOneWayHazardContext(
+      missionHazardStatus,
+      stats
+    );
+
     console.log(
       "ARES TERRAIN HAZARD ASSESSMENT:",
       {
@@ -383,7 +425,7 @@ export async function assessRouteHazards(
     );
 
   } catch (error) {
-    if (requestId !== state.hazardRequestId) return;
+    if (!isCurrentHazardRequest(requestId)) return;
 
     console.error(
       "ARES TERRAIN HAZARD ASSESSMENT FAILED:",
@@ -402,6 +444,9 @@ export async function assessRouteHazards(
       "#hazardNote",
       `Terrain assessment could not be completed: ${error.message || "Elevation data unavailable."} No hazard classification has been generated.`
     );
+
+    // Never represent failed terrain assessment as zero hazards.
+    updateOneWayHazardContext("unavailable");
   }
 }
 

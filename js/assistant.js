@@ -1,4 +1,6 @@
 
+import { getMissionContext } from "./missionContext.js";
+
 const API_BASE_URL =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1"
@@ -24,16 +26,25 @@ async function readJsonResponse(response) {
 }
 
 /**
- * Send conversation messages to the ARES backend.
+ * Send conversation messages and the latest mission snapshot
+ * to the ARES backend.
+ *
+ * Mission context is captured at message-send time.
  */
-export async function sendAssistantMessage(messages) {
+export async function sendAssistantMessage(
+  messages,
+  missionContext = getMissionContext()
+) {
   try {
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({
+        messages,
+        missionContext
+      }),
     });
 
     const data = await readJsonResponse(response);

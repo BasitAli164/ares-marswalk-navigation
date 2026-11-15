@@ -29,6 +29,13 @@ import {
   assessRoundTripHazards
 } from "./hazards.js";
 
+import {
+  markMissionCalculating,
+  setMissionContext,
+  updateMissionEVALimit,
+  clearMissionContext
+} from "./missionContext.js";
+
 const $ = (selector) => document.querySelector(selector);
 
 let lastTotalEvaHours = null;
@@ -57,12 +64,20 @@ function updateEVALimitStatus() {
   const input = $("#evaTimeLimitHours");
   const status = $("#evaLimitStatus");
 
-  if (!input || !status) return;
+  const result = {
+    configuredHours: null,
+    status: "unset"
+  };
+
+  if (!input || !status) {
+    return result;
+  }
 
   if (!Number.isFinite(lastTotalEvaHours)) {
     status.textContent = "WAITING FOR ROUND-TRIP RESULT";
     status.dataset.status = "unset";
-    return;
+
+    return result;
   }
 
   const rawLimit = input.value.trim();
@@ -71,27 +86,46 @@ function updateEVALimitStatus() {
   if (!rawLimit) {
     status.textContent = "LIMIT NOT CONFIGURED";
     status.dataset.status = "unset";
-    return;
+
+    return result;
   }
 
   if (!Number.isFinite(limit) || limit <= 0) {
     status.textContent = "INVALID EVA TIME LIMIT";
     status.dataset.status = "unset";
-    return;
+
+    return {
+      configuredHours: null,
+      status: "invalid"
+    };
   }
+
+  result.configuredHours = limit;
 
   if (lastTotalEvaHours > limit) {
     status.textContent = "EXCEEDS CONFIGURED LIMIT";
     status.dataset.status = "exceeded";
+
+    result.status = "exceeded";
   } else {
     status.textContent = "WITHIN CONFIGURED LIMIT";
     status.dataset.status = "within";
+
+    result.status = "within";
   }
+
+  return result;
 }
 
 $("#evaTimeLimitHours")?.addEventListener(
   "input",
-  updateEVALimitStatus
+  () => {
+    const evaLimit = updateEVALimitStatus();
+
+    // Update the current mission snapshot when the user
+    // changes the configured EVA time limit.
+    updateMissionEVALimit(evaLimit);
+  }
 );
 
 // --------------------------------------------------
@@ -299,6 +333,148 @@ function updateMissionTotals(outbound, returning, mode) {
 }
 
 // --------------------------------------------------
+// MISSION CONTEXT HELPERS
+// --------------------------------------------------
+
+function hasHazardStats(stats) {
+  return Boolean(
+    stats &&
+    typeof stats === "object" &&
+    Number.isFinite(stats.assessed) &&
+    stats.assessed > 0
+  );
+}
+
+function buildHazardContext(hazardResults) {
+  if (!hazardResults || typeof hazardResults !== "object") {
+    return {
+      status: "unavailable",
+      outbound: null,
+      returning: null,
+      combined: null
+    };
+  }
+
+  const outboundAvailable = hasHazardStats(
+    hazardResults.outbound
+  );
+
+  const returnAvailable = hasHazardStats(
+    hazardResults.returning
+  );
+
+  const bothAvailable =
+    outboundAvailable && returnAvailable;
+
+  let status = "unavailable";
+
+  if (bothAvailable) {
+    status = "complete";
+  } else if (outboundAvailable || returnAvailable) {
+    status = "partial";
+  }
+
+  // A successful assessment with skipped segments is partial data.
+  const outboundSkipped = outboundAvailable &&
+    Number.isFinite(hazardResults.outbound.skipped) &&
+    hazardResults.outbound.skipped > 0;
+
+  const returnSkipped = returnAvailable &&
+    Number.isFinite(hazardResults.returning.skipped) &&
+    hazardResults.returning.skipped > 0;
+
+  if (
+    status === "complete" &&
+    (outboundSkipped || returnSkipped)
+  ) {
+    status = "partial";
+  }
+
+  return {
+    status,
+
+    outbound: outboundAvailable
+      ? hazardResults.outbound
+      : null,
+
+    returning: returnAvailable
+      ? hazardResults.returning
+      : null,
+
+    combined: hazardResults.combined || null
+  };
+}
+
+function saveRoundTripMissionContext({
+  start,
+  target,
+  selectedMode,
+  outbound,
+  returning,
+  totals,
+  geometryComparison,
+  hazardResults
+}) {
+  const evaLimit = updateEVALimitStatus();
+
+  const hazards = buildHazardContext(hazardResults);
+
+  const missionContext = setMissionContext({
+    missionType: "round-trip",
+    status: "complete",
+    routeMode: selectedMode,
+
+    start: {
+      name: start.name || null,
+      lat: start.lat,
+      lon: start.lon
+    },
+
+    destination: {
+      name: target.name || null,
+      lat: target.lat,
+      lon: target.lon
+    },
+
+    outbound: {
+      distanceKm: outbound.distanceKm,
+      evaHours: outbound.distanceKm / EVA_SPEED_KMH,
+      maxSlope: outbound.maxSlope,
+      ascentMeters: outbound.ascent
+    },
+
+    returning: {
+      distanceKm: returning.distanceKm,
+      evaHours: returning.distanceKm / EVA_SPEED_KMH,
+      maxSlope: returning.maxSlope,
+      ascentMeters: returning.ascent
+    },
+
+    totals: {
+      distanceKm: totals.totalDistance,
+      evaHours: totals.totalEvaHours,
+      maxSlope: totals.maximumSlope,
+      ascentMeters: totals.totalAscent
+    },
+
+    geometryComparison,
+
+    hazards,
+
+    evaLimit,
+
+    evaSpeedKmh: EVA_SPEED_KMH
+  });
+
+  console.log(
+    "ARES ROUND-TRIP MISSION CONTEXT:",
+    missionContext
+  );
+
+  return missionContext;
+}
+
+// --------------------------------------------------
 // ROUND-TRIP CALCULATION
 // --------------------------------------------------
 
@@ -362,6 +538,9 @@ export async function runRoundTrip(
   // 4. REQUEST TRACKING
 
   const requestId = ++state.hazardRequestId;
+
+  // Do not expose the previous mission while this one is calculating.
+  markMissionCalculating();
 
   routeLayer.removeAll();
   hazardLayer?.removeAll();
@@ -499,7 +678,20 @@ export async function runRoundTrip(
 
     if (requestId !== state.hazardRequestId) return;
 
-    // 13. COMPLETE RESULTS
+    // 13. SAVE ACTUAL ROUND-TRIP MISSION CONTEXT
+
+    saveRoundTripMissionContext({
+      start,
+      target,
+      selectedMode,
+      outbound,
+      returning,
+      totals,
+      geometryComparison,
+      hazardResults
+    });
+
+    // 14. COMPLETE RESULTS
 
     console.log(
       "ARES ROUND TRIP RESULTS:",
@@ -533,7 +725,7 @@ export async function runRoundTrip(
       }
     );
 
-    // 14. FRAME BOTH ROUTES
+    // 15. FRAME BOTH ROUTES
 
     try {
       await scene.goTo(
@@ -558,6 +750,8 @@ export async function runRoundTrip(
     if (requestId !== state.hazardRequestId) return;
 
     console.error("ARES ROUND TRIP FAILED:", error);
+
+    clearMissionContext();
 
     routeLayer.removeAll();
     hazardLayer?.removeAll();

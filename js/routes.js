@@ -1,3 +1,4 @@
+
 import { state } from "./state.js";
 import {
   MARS_WKID,
@@ -12,8 +13,19 @@ import {
   createRouteLine,
   createRouteMarker
 } from "./map.js";
-import { sampleTerrain, terrainMetrics, assessRouteHazards, resetHazardPanel } from "./hazards.js";
+import {
+  sampleTerrain,
+  terrainMetrics,
+  assessRouteHazards,
+  resetHazardPanel
+} from "./hazards.js";
 import { showRouteDialog } from "./ui.js";
+
+import {
+  markMissionCalculating,
+  setMissionContext,
+  clearMissionContext
+} from "./missionContext.js";
 
 const $ = (q) => document.querySelector(q);
 
@@ -179,6 +191,10 @@ export async function drawRoute(a, b, mode = "FAST") {
   }
 
   const requestId = ++state.hazardRequestId;
+
+  // Phase 2: mark the previous mission snapshot as calculating.
+  markMissionCalculating();
+
   routeLayer.removeAll();
   hazardLayer?.removeAll();
   routeLayer.visible = true;
@@ -269,6 +285,61 @@ export async function drawRoute(a, b, mode = "FAST") {
     $("#routeNote").textContent = result.note;
 
     $("#routeSummary").classList.remove("loading");
+
+    // Phase 2: save actual calculated one-way mission metrics.
+    if (requestId === state.hazardRequestId) {
+      setMissionContext({
+        missionType: "one-way",
+        status: "complete",
+        routeMode: mode === "SAFE" ? "SAFE" : "FAST",
+
+        start: {
+          name: a.name || null,
+          lat: a.lat,
+          lon: a.lon
+        },
+
+        destination: {
+          name: b.name || null,
+          lat: b.lat,
+          lon: b.lon
+        },
+
+        outbound: {
+          distanceKm: result.distanceKm,
+          evaHours: result.distanceKm / EVA_SPEED_KMH,
+          maxSlope: result.maxSlope,
+          ascentMeters: result.ascent
+        },
+
+        returning: null,
+        totals: null,
+        geometryComparison: null,
+
+        // Hazard assessment is displayed by the existing UI.
+        // Structured hazard statistics will be integrated separately.
+        hazards: {
+          status: "not-captured"
+        },
+
+        evaLimit: {
+          configuredHours: null,
+          status: "unset"
+        },
+
+        evaSpeedKmh: EVA_SPEED_KMH
+      });
+
+      console.log("ARES ONE-WAY MISSION CONTEXT:", {
+        missionType: "one-way",
+        routeMode: mode,
+        distanceKm: result.distanceKm,
+        evaHours: result.distanceKm / EVA_SPEED_KMH,
+        maxSlope: result.maxSlope,
+        ascentMeters: result.ascent
+      });
+    }
+
     assessRouteHazards(result.path, requestId);
 
     try {
@@ -284,6 +355,9 @@ export async function drawRoute(a, b, mode = "FAST") {
     console.error("ARES ROUTE FAILED:", error);
 
     if (requestId === state.hazardRequestId) {
+      // Do not leave an old or incomplete mission snapshot available.
+      clearMissionContext();
+
       $("#routeSummary").classList.remove("loading");
       $("#routeModeBadge").textContent = `${mode} / ERROR`;
       $("#routeNote").textContent = error.message ||
