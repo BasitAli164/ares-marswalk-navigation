@@ -31,8 +31,15 @@ if (!GROQ_API_KEY) {
 ========================================================= */
 
 const allowedOrigins = [
+  // Local development - Live Server
+  "http://127.0.0.1:5500",
+  "http://localhost:5500",
+
+  // Other local development origins
   "http://localhost:3000",
   "http://localhost:5173",
+
+  // Production frontend
   "https://ares-marswalk-navigation.vercel.app"
 ];
 
@@ -47,6 +54,9 @@ app.use(
         new Error("Origin not allowed by ARES CORS policy.")
       );
     },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    optionsSuccessStatus: 204
   })
 );
 
