@@ -7,20 +7,24 @@ import Groq from "groq-sdk";
 dotenv.config();
 
 const app = express();
+
 const PORT = Number(process.env.PORT) || 3000;
+const IS_VERCEL = process.env.VERCEL === "1";
 
 const MODEL = "openai/gpt-oss-20b";
-
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-if (!GROQ_API_KEY) {
-  console.error("ARES ERROR: GROQ_API_KEY is missing from .env");
-  process.exit(1);
-}
+/* =========================================================
+   GROQ CLIENT
+========================================================= */
 
-const groq = new Groq({
-  apiKey: GROQ_API_KEY,
-});
+const groq = GROQ_API_KEY
+  ? new Groq({ apiKey: GROQ_API_KEY })
+  : null;
+
+if (!GROQ_API_KEY) {
+  console.error("ARES ERROR: GROQ_API_KEY is missing.");
+}
 
 /* =========================================================
    CORS CONFIGURATION
@@ -35,13 +39,13 @@ const allowedOrigins = [
 app.use(
   cors({
     origin(origin, callback) {
-      // Allow requests without an Origin header, such as local
-      // health checks and command-line testing.
       if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      return callback(new Error("Origin not allowed by ARES CORS policy."));
+      return callback(
+        new Error("Origin not allowed by ARES CORS policy.")
+      );
     },
   })
 );
@@ -344,6 +348,8 @@ app.get("/api/health", (req, res) => {
     success: true,
     message: "ARES AI backend is running.",
     model: MODEL,
+    environment: IS_VERCEL ? "vercel" : "local",
+    groqConfigured: Boolean(GROQ_API_KEY),
   });
 });
 
@@ -353,6 +359,13 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
   try {
+    if (!groq) {
+      return res.status(503).json({
+        success: false,
+        error: "ARES AI backend is missing its GROQ_API_KEY configuration.",
+      });
+    }
+
     const { messages } = req.body || {};
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -362,7 +375,6 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    // Accept only valid user and assistant messages.
     const validMessages = messages
       .filter((message) => {
         return (
@@ -386,7 +398,6 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    // The latest valid message must be from the user.
     const latestMessage = validMessages[validMessages.length - 1];
 
     if (latestMessage.role !== "user") {
@@ -398,7 +409,6 @@ app.post("/api/chat", async (req, res) => {
 
     const completion = await groq.chat.completions.create({
       model: MODEL,
-
       messages: [
         {
           role: "system",
@@ -406,7 +416,6 @@ app.post("/api/chat", async (req, res) => {
         },
         ...validMessages,
       ],
-
       temperature: 0.4,
       max_completion_tokens: 1200,
     });
@@ -428,7 +437,7 @@ app.post("/api/chat", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("ARES AI CHAT ERROR:", error.message);
+    console.error("ARES AI CHAT ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -442,30 +451,44 @@ app.post("/api/chat", async (req, res) => {
 ========================================================= */
 
 app.use((error, req, res, next) => {
-  console.error("ARES SERVER ERROR:", error.message);
+  console.error("ARES SERVER ERROR:", error);
 
   if (res.headersSent) {
     return next(error);
   }
 
-  return res.status(500).json({
+  const status = error.message?.includes("ARES CORS policy")
+    ? 403
+    : 500;
+
+  return res.status(status).json({
     success: false,
-    error: "An internal ARES backend error occurred.",
+    error:
+      status === 403
+        ? "Origin not allowed by ARES CORS policy."
+        : "An internal ARES backend error occurred.",
   });
 });
 
 /* =========================================================
-   START SERVER
+   LOCAL SERVER
 ========================================================= */
 
-app.listen(PORT, () => {
-  console.log("------------------------------------------");
-  console.log("ARES AI BACKEND");
-  console.log("------------------------------------------");
-  console.log(`Server: http://localhost:${PORT}`);
-  console.log(`Health: http://localhost:${PORT}/api/health`);
-  console.log(`Model: ${MODEL}`);
-  console.log("Project: ARES Marswalk Navigation System");
-  console.log("AI status: READY");
-  console.log("------------------------------------------");
-});
+// Vercel imports this Express app as a serverless function.
+// Only local development starts a persistent HTTP server.
+
+if (!IS_VERCEL) {
+  app.listen(PORT, () => {
+    console.log("------------------------------------------");
+    console.log("ARES AI BACKEND");
+    console.log("------------------------------------------");
+    console.log(`Server: http://localhost:${PORT}`);
+    console.log(`Health: http://localhost:${PORT}/api/health`);
+    console.log(`Model: ${MODEL}`);
+    console.log("Project: ARES Marswalk Navigation System");
+    console.log("AI status:", GROQ_API_KEY ? "READY" : "MISSING API KEY");
+    console.log("------------------------------------------");
+  });
+}
+
+export default app;

@@ -3,7 +3,25 @@ const API_BASE_URL =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1"
     ? "http://localhost:3000/api"
-    : "https://ares-marswalk-navigation.vercel.app//api";
+    : "/api";
+
+/**
+ * Safely parse JSON responses.
+ */
+async function readJsonResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!contentType.includes("application/json")) {
+    const responseText = await response.text();
+
+    throw new Error(
+      `ARES backend returned a non-JSON response (${response.status}). ` +
+      responseText.slice(0, 180)
+    );
+  }
+
+  return response.json();
+}
 
 /**
  * Send conversation messages to the ARES backend.
@@ -18,7 +36,7 @@ export async function sendAssistantMessage(messages) {
       body: JSON.stringify({ messages }),
     });
 
-    const data = await response.json();
+    const data = await readJsonResponse(response);
 
     if (!response.ok || !data.success) {
       throw new Error(
@@ -47,7 +65,7 @@ export async function sendAssistantMessage(messages) {
 export async function checkAssistantServer() {
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
-    const data = await response.json();
+    const data = await readJsonResponse(response);
 
     return response.ok && data.success === true;
 
