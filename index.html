@@ -1,0 +1,757 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ARES / Marswalk System</title>
+  <meta name="theme-color" content="#07090b" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  >
+
+  <script type="module" src="https://js.arcgis.com/5.1/"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div id="boot" class="boot-screen">
+    <div class="boot-mark">ARES</div>
+    <div class="boot-copy">MARSWALK SYSTEM</div>
+    <div class="boot-line"><span></span></div>
+  </div>
+
+  <main id="landing" class="landing hidden">
+    <div class="landing-noise"></div>
+    <div class="landing-grid"></div>
+
+    <section class="landing-content">
+      <div class="eyebrow">ARES / MARSWALK SYSTEM</div>
+
+      <div class="logo-stage" aria-hidden="true">
+        <div class="orbit orbit-a"></div>
+        <div class="orbit orbit-b"></div>
+        <div class="route-dot"></div>
+        <img src="./assets/ares-logo.png" class="hero-logo" alt="ARES logo" />
+      </div>
+
+      <h1>Find a way.<br><span>Bring them home.</span></h1>
+
+      <p class="landing-lede">
+        Hyperlocal Mars navigation for astronauts — real planetary data,
+        route planning, science context, and EVA execution in one operational view.
+      </p>
+
+      <div class="landing-actions">
+        <button class="btn primary" id="startMissionBtn">
+          START MISSION <span>→</span>
+        </button>
+
+        <button class="btn ghost" id="freeExploreBtn">
+          FREE EXPLORE
+        </button>
+      </div>
+
+      <div class="landing-meta">
+        <span>JEZERO CRATER</span>
+        <span>18.44°N · 77.45°E</span>
+        <span>NASA / USGS TERRAIN</span>
+      </div>
+    </section>
+  </main>
+
+  <main id="appShell" class="app-shell hidden">
+    <header class="topbar">
+      <button class="wordmark" id="homeBtn" title="Main menu">
+        <span class="wordmark-main">ARES</span>
+        <span class="wordmark-sub">MARSWALK SYSTEM</span>
+      </button>
+
+      <nav class="mode-tabs" aria-label="ARES views">
+        <button class="tab active" data-view="map">MAP</button>
+        <button class="tab" data-view="mission">MISSION</button>
+        <button class="tab" data-view="science">SCIENCE</button>
+        <button class="tab" data-view="data">DATA</button>
+      </nav>
+
+      <div class="topbar-status">
+        <div>
+          <span class="status-dot online"></span>
+          NASA/USGS LAYERS
+        </div>
+
+        <button class="text-btn" id="mainMenuBtn">
+          ← MAIN MENU
+        </button>
+      </div>
+    </header>
+
+    <section id="mapView" class="view active-view">
+      <div class="map-layout">
+
+        <aside class="left-rail">
+          <div class="rail-section mission-compact">
+            <div class="rail-label">ACTIVE PROFILE</div>
+            <div class="mission-id">EVA–01</div>
+            <div class="mission-name">WILDCAT RIDGE MARSWALK</div>
+            <div class="mission-rule"></div>
+
+            <div class="mission-row">
+              <span>START</span>
+              <strong>JEZERO BASE</strong>
+            </div>
+
+            <div class="mission-row">
+              <span>TARGET</span>
+              <strong>WILDCAT RIDGE</strong>
+            </div>
+
+            <div class="mission-row">
+              <span>SCIENCE</span>
+              <strong>DELTA SEDIMENTS</strong>
+            </div>
+          </div>
+
+          <div class="rail-section">
+            <div class="rail-label">MAP LAYERS</div>
+
+            <label class="layer-toggle">
+              <input type="radio" name="baseLayer" value="imagery" checked>
+              <span>OPTICAL IMAGERY</span>
+              <em>NASA / USGS</em>
+            </label>
+
+            <label class="layer-toggle">
+              <input type="radio" name="baseLayer" value="relief">
+              <span>SHADED RELIEF</span>
+              <em>MOLA / HRSC</em>
+            </label>
+
+            <label class="layer-toggle">
+              <input type="checkbox" id="cratersToggle" checked>
+              <span>NOMENCLATURE</span>
+              <em>FEATURE LAYER</em>
+            </label>
+
+            <label class="layer-toggle">
+              <input type="checkbox" id="hazardToggle" checked>
+              <span>TERRAIN HAZARDS</span>
+              <em>DEM-BASED SLOPE ANALYSIS</em>
+            </label>
+          </div>
+
+          <div class="rail-section">
+            <div class="rail-label">SAVED PLACES</div>
+            <div id="savedPlacesList" class="saved-list"></div>
+          </div>
+        </aside>
+
+        <div class="map-stage">
+          <arcgis-scene id="marsScene">
+            <arcgis-zoom slot="top-left"></arcgis-zoom>
+            <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+            <arcgis-compass slot="top-left"></arcgis-compass>
+          </arcgis-scene>
+
+          <div class="map-hud top-left-hud">
+            <div class="hud-kicker">MARS / JEZERO</div>
+            <div class="hud-value" id="cursorCoords">
+              CLICK SURFACE TO SELECT
+            </div>
+          </div>
+
+          <div class="map-hud bottom-left-hud">
+            <span class="live-dot"></span>
+            <span id="terrainModeLabel">
+              GLOBAL MARS ELEVATION + IMAGERY
+            </span>
+          </div>
+
+          <!-- FLOATING ROUTE RESULTS DIALOG -->
+          <div
+            id="routeSummary"
+            class="route-summary hidden"
+            role="dialog"
+            aria-label="Route results"
+            aria-modal="false"
+          >
+            <div class="route-dialog-header" id="routeDialogDragHandle">
+              <div class="route-summary-head">
+                <span>ROUTE SOLUTION</span>
+                <strong id="routeModeBadge">FAST</strong>
+              </div>
+
+              <div class="route-dialog-controls">
+                <button
+                  type="button"
+                  class="dialog-control"
+                  id="minimizeRouteBtn"
+                  title="Minimize results"
+                  aria-label="Minimize results"
+                >−</button>
+
+                <button
+                  type="button"
+                  class="dialog-control"
+                  id="maximizeRouteBtn"
+                  title="Maximize results"
+                  aria-label="Maximize or restore results"
+                >□</button>
+
+                <button
+                  type="button"
+                  class="dialog-control close-control"
+                  id="closeRouteBtn"
+                  title="Close results"
+                  aria-label="Close results"
+                >×</button>
+              </div>
+            </div>
+
+            <div class="route-dialog-content" id="routeDialogContent">
+
+              <!-- MISSION TOTALS -->
+              <div class="route-stats route-stats-five">
+                <div>
+                  <span>DISTANCE</span>
+                  <strong id="routeDistance">—</strong>
+                </div>
+
+                <div>
+                  <span>EVA TIME</span>
+                  <strong id="routeTime">—</strong>
+                </div>
+
+                <div>
+                  <span>MAX SLOPE</span>
+                  <strong id="routeSlope">—</strong>
+                </div>
+
+                <div>
+                  <span>ASCENT</span>
+                  <strong id="routeAscent">—</strong>
+                </div>
+
+                <div>
+                  <span>MODEL</span>
+                  <strong id="routeModel">—</strong>
+                </div>
+              </div>
+
+              <div class="route-note" id="routeNote">
+                Choose FAST or SAFE, then route to a selected point.
+              </div>
+
+              <!-- STANDARD ROUTE HAZARD PANEL -->
+              <div id="hazardPanel" class="hazard-panel">
+                <div class="hazard-heading">
+                  <span>TERRAIN HAZARD ASSESSMENT</span>
+                  <strong id="hazardStatus">WAITING FOR ROUTE</strong>
+                </div>
+
+                <div class="hazard-stats">
+                  <div>
+                    <span>LOW</span>
+                    <strong id="hazardLow">—</strong>
+                  </div>
+
+                  <div>
+                    <span>MODERATE</span>
+                    <strong id="hazardModerate">—</strong>
+                  </div>
+
+                  <div>
+                    <span>HIGH</span>
+                    <strong id="hazardHigh">—</strong>
+                  </div>
+
+                  <div>
+                    <span>MAX SLOPE</span>
+                    <strong id="hazardMaxSlope">—</strong>
+                  </div>
+                </div>
+
+                <div id="hazardNote" class="hazard-note">
+                  Calculate a route to begin terrain assessment.
+                </div>
+              </div>
+
+              <!-- ROUND TRIP RESULTS -->
+              <section id="roundTripResults" class="round-trip-results hidden">
+
+                <div class="round-trip-heading">
+                  <span>ROUND-TRIP MISSION ANALYSIS</span>
+                  <strong>OUTBOUND + RETURN</strong>
+                </div>
+
+                <div class="round-trip-leg">
+                  <div class="round-trip-leg-heading">
+                    <span class="outbound-indicator"></span>
+                    <strong>OUTBOUND LEG</strong>
+                    <small>BASE → TARGET</small>
+                  </div>
+
+                  <div class="round-trip-grid">
+                    <div>
+                      <span>DISTANCE</span>
+                      <strong id="outboundDistance">—</strong>
+                    </div>
+
+                    <div>
+                      <span>EVA TIME</span>
+                      <strong id="outboundTime">—</strong>
+                    </div>
+
+                    <div>
+                      <span>MAX SLOPE</span>
+                      <strong id="outboundSlope">—</strong>
+                    </div>
+
+                    <div>
+                      <span>ASCENT</span>
+                      <strong id="outboundAscent">—</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="round-trip-leg">
+                  <div class="round-trip-leg-heading">
+                    <span class="return-indicator"></span>
+                    <strong>RETURN LEG</strong>
+                    <small>TARGET → BASE</small>
+                  </div>
+
+                  <div class="round-trip-grid">
+                    <div>
+                      <span>DISTANCE</span>
+                      <strong id="returnDistance">—</strong>
+                    </div>
+
+                    <div>
+                      <span>EVA TIME</span>
+                      <strong id="returnTime">—</strong>
+                    </div>
+
+                    <div>
+                      <span>MAX SLOPE</span>
+                      <strong id="returnSlope">—</strong>
+                    </div>
+
+                    <div>
+                      <span>ASCENT</span>
+                      <strong id="returnAscent">—</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="eva-limit-result">
+                  <div>
+                    <span>CONFIGURED EVA TIME LIMIT</span>
+                    <strong id="evaLimitStatus" data-status="unset">
+                      LIMIT NOT CONFIGURED
+                    </strong>
+                  </div>
+                </div>
+
+                <div class="round-trip-disclaimer">
+                  EVA duration is a distance-based prototype estimate.
+                  It does not include rest periods, terrain delays, equipment
+                  constraints, or other mission operations. This is not a
+                  certified astronaut safety assessment.
+                </div>
+
+              </section>
+            </div>
+          </div>
+
+          <!-- REOPEN RESULTS BUTTON -->
+          <button
+            id="routeReopenBtn"
+            class="route-reopen-btn hidden"
+            type="button"
+          >
+            <span class="reopen-indicator"></span>
+            ROUTE RESULTS
+            <span class="reopen-arrow">↑</span>
+          </button>
+        </div>
+
+        <aside class="right-rail">
+          <div class="selection-empty" id="selectionEmpty">
+            <div class="selection-crosshair">＋</div>
+            <h2>Select Mars.</h2>
+            <p>
+              Click anywhere on the surface to inspect coordinates,
+              create a waypoint, or route to that point.
+            </p>
+          </div>
+
+          <div class="selection-panel hidden" id="selectionPanel">
+            <div class="rail-label">SELECTED POINT</div>
+
+            <div class="coords-large" id="selectedCoords">—</div>
+
+            <div class="coordinate-grid">
+              <div>
+                <span>LATITUDE</span>
+                <strong id="selectedLat">—</strong>
+              </div>
+
+              <div>
+                <span>LONGITUDE</span>
+                <strong id="selectedLon">—</strong>
+              </div>
+            </div>
+
+            <label class="field-label" for="placeName">
+              LOCATION NAME
+            </label>
+            <input
+              class="field"
+              id="placeName"
+              placeholder="e.g. Sample Site Alpha"
+            />
+
+            <label class="field-label" for="placeType">TYPE</label>
+            <select class="field" id="placeType">
+              <option>WAYPOINT</option>
+              <option>SCIENCE</option>
+              <option>HABITAT</option>
+              <option>SHELTER</option>
+              <option>ROVER</option>
+              <option>EQUIPMENT</option>
+              <option>OTHER</option>
+            </select>
+
+            <div class="field-label">ROUTE MODE</div>
+
+            <div class="route-mode-switch" id="routeModeSwitch">
+              <button class="route-mode active" data-mode="FAST">
+                FAST<span>SHORTEST</span>
+              </button>
+
+              <button class="route-mode" data-mode="SAFE">
+                SAFE<span>TERRAIN-AWARE</span>
+              </button>
+            </div>
+
+            <div class="route-mode-help" id="routeModeHelp">
+              FAST follows the shortest surface path.
+            </div>
+
+            <div class="selection-actions">
+              <button class="btn small primary" id="savePlaceBtn">
+                SAVE LOCATION
+              </button>
+
+              <button class="btn small ghost" id="setStartBtn">
+                SET AS START
+              </button>
+
+              <button class="btn small ghost" id="routeHereBtn">
+                ROUTE HERE
+              </button>
+
+              <button class="btn small ghost" id="roundTripBtn">
+                CALCULATE ROUND TRIP
+              </button>
+            </div>
+
+            <!-- EVA TIME LIMIT -->
+            <div class="eva-limit-control">
+              <label class="field-label" for="evaTimeLimitHours">
+                EVA TIME LIMIT (HOURS)
+              </label>
+
+              <input
+                class="field"
+                id="evaTimeLimitHours"
+                type="number"
+                min="0.1"
+                step="0.1"
+                inputmode="decimal"
+                placeholder="Optional — e.g. 40"
+              />
+
+              <div class="eva-limit-help">
+                Optional planning threshold. No default limit is assumed.
+              </div>
+            </div>
+
+            <div class="route-origin hidden" id="routeOriginBox">
+              <span>ROUTE START</span>
+              <strong id="routeOriginText">—</strong>
+              <button id="clearStartBtn" type="button">CLEAR</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="missionView" class="view">
+      <div class="content-page mission-page">
+        <div class="page-kicker">MISSION SIMULATION / EVA–01</div>
+
+        <div class="mission-hero-grid">
+          <div>
+            <h2>Wildcat Ridge<br>Delta Survey</h2>
+
+            <p class="page-lede">
+              Navigate from Jezero Base to a real Perseverance sampling site
+              in the western delta, assess terrain, confirm the target visually,
+              collect a representative sample, and return.
+            </p>
+          </div>
+
+          <div class="mission-stamp">
+            <span>SCIENCE PRIORITY</span><strong>HIGH</strong>
+            <span>EVA CLASS</span><strong>SURFACE GEOLOGY</strong>
+            <span>STATUS</span><strong>READY</strong>
+          </div>
+        </div>
+
+        <div class="objective-strip">
+          <div><span>START</span><strong>JEZERO BASE</strong></div>
+          <div><span>TARGET</span><strong>WILDCAT RIDGE</strong></div>
+          <div><span>SCIENCE</span><strong>FINE-GRAINED DELTA SEDIMENT</strong></div>
+          <div><span>GOAL</span><strong>OUT + BACK SAFELY</strong></div>
+        </div>
+
+        <button class="btn primary" id="missionToMapBtn">
+          OPEN MISSION MAP →
+        </button>
+      </div>
+    </section>
+
+    <section id="scienceView" class="view">
+      <div class="content-page science-page">
+        <div class="page-kicker">SCIENCE TARGET / JEZERO WESTERN DELTA</div>
+
+        <h2>Why Wildcat Ridge?</h2>
+
+        <p class="page-lede">
+          Perseverance sampled Wildcat Ridge within Jezero’s ancient delta.
+          NASA identifies these sedimentary rocks as among the best places
+          in Jezero to investigate ancient habitable environments and
+          potential signs of past microbial life.
+        </p>
+
+        <div class="science-grid">
+          <article class="science-card">
+            <span>01</span>
+            <h3>OPTICAL</h3>
+            <p>
+              Mars surface imagery provides landmark and outcrop context
+              for the astronaut-scale traverse.
+            </p>
+          </article>
+
+          <article class="science-card">
+            <span>02</span>
+            <h3>TOPOGRAPHY</h3>
+            <p>
+              USGS CTX terrain models provide elevation data for route
+              slope and mobility analysis.
+            </p>
+          </article>
+
+          <article class="science-card">
+            <span>03</span>
+            <h3>GEOLOGY</h3>
+            <p>
+              Delta sediment context helps prioritize destinations
+              with high scientific value.
+            </p>
+          </article>
+        </div>
+
+        <a
+          class="source-link"
+          href="https://science.nasa.gov/resource/sample-collection-and-rock-analysis-at-wildcat-ridge/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          NASA WILDCAT RIDGE RESOURCE ↗
+        </a>
+      </div>
+    </section>
+
+    <section id="dataView" class="view">
+      <div class="content-page data-page">
+        <div class="page-kicker">DATA PROVENANCE</div>
+
+        <h2>Built on planetary data,<br>not decorative numbers.</h2>
+
+        <div class="data-table">
+          <div class="data-row">
+            <span>GLOBAL OPTICAL</span>
+            <strong>NASA / USGS MDIM</strong>
+            <em>LIVE</em>
+          </div>
+
+          <div class="data-row">
+            <span>GLOBAL ELEVATION</span>
+            <strong>MOLA / HRSC MARS DEM</strong>
+            <em>LIVE</em>
+          </div>
+
+          <div class="data-row">
+            <span>JEZERO DEM</span>
+            <strong>USGS CTX 20 M/PIXEL</strong>
+            <em>NEXT</em>
+          </div>
+
+          <div class="data-row">
+            <span>JEZERO ORTHO</span>
+            <strong>USGS CTX 5 M/PIXEL</strong>
+            <em>NEXT</em>
+          </div>
+
+          <div class="data-row">
+            <span>GROUND CONTEXT</span>
+            <strong>PERSEVERANCE MASTCAM-Z / NAVCAM</strong>
+            <em>NEXT</em>
+          </div>
+        </div>
+
+        <div class="data-links">
+          <a
+            href="https://astrogeology-usgs.hub.arcgis.com/pages/interactive-maps-mars"
+            target="_blank"
+            rel="noreferrer"
+          >USGS INTERACTIVE MARS MAPS ↗</a>
+
+          <a
+            href="https://trek.nasa.gov/mars/"
+            target="_blank"
+            rel="noreferrer"
+          >NASA MARS TREK ↗</a>
+
+          <a
+            href="https://mars.nasa.gov/mars2020/multimedia/raw-images/"
+            target="_blank"
+            rel="noreferrer"
+          >PERSEVERANCE RAW IMAGES ↗</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================
+         ARES AI ASSISTANT — PHASE 1: TEXT CHAT
+    ====================================================== -->
+
+    <div class="ares-ai">
+
+      <button
+        id="aiAssistantToggle"
+        class="ai-assistant-toggle"
+        type="button"
+        aria-label="Open ARES AI Assistant"
+        aria-expanded="false"
+        aria-controls="aiAssistantPanel"
+      >
+        <span class="ai-toggle-icon" aria-hidden="true">✳</span>
+        <span>ARES AI</span>
+        <span
+          class="ai-status-indicator offline"
+          id="aiButtonStatus"
+          aria-label="Backend status"
+        ></span>
+      </button>
+
+      <section
+        id="aiAssistantPanel"
+        class="ai-assistant-panel hidden"
+        aria-label="ARES AI Assistant"
+      >
+
+        <header class="ai-panel-header">
+          <div>
+            <div class="ai-panel-kicker">MISSION SUPPORT SYSTEM</div>
+
+            <div class="ai-panel-title">
+              ARES AI Assistant
+            </div>
+
+            <div class="ai-panel-status">
+              <span
+                id="aiStatusDot"
+                class="ai-status-indicator offline"
+              ></span>
+
+              <span id="aiStatusText">
+                CHECKING BACKEND
+              </span>
+            </div>
+          </div>
+
+          <button
+            id="aiAssistantClose"
+            class="ai-close-btn"
+            type="button"
+            aria-label="Close assistant"
+          >×</button>
+        </header>
+
+        <div
+          id="aiChatMessages"
+          class="ai-chat-messages"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label="Conversation with ARES AI"
+        >
+          <div class="ai-message assistant-message">
+            <div class="ai-message-label">ARES AI</div>
+
+            <div class="ai-message-content">
+              ARES AI mission support interface initialized.
+
+              Ask me about FAST and SAFE route planning, terrain slope,
+              elevation, ascent, EVA duration, or mission analysis.
+
+              I can explain the available ARES calculations, but I cannot
+              certify a route as safe for real astronaut operations.
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-input-area">
+
+          <form id="aiChatForm" class="ai-chat-form">
+
+            <textarea
+              id="aiChatInput"
+              rows="1"
+              maxlength="4000"
+              placeholder="Ask ARES about your mission..."
+              aria-label="Message ARES AI"
+            ></textarea>
+
+            <button
+              id="aiSendBtn"
+              type="submit"
+              aria-label="Send message"
+            >↑</button>
+
+          </form>
+
+          <div class="ai-input-footer">
+            <span>POWERED BY GROQ · GPT-OSS-20B</span>
+            <span>TEXT ASSISTANT</span>
+          </div>
+
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
