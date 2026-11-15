@@ -27,8 +27,9 @@ const groq = new Groq({
 ========================================================= */
 
 const allowedOrigins = [
-  "http://localhost:5500",
-  "http://127.0.0.1:5500",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://ares-marswalk-navigation.vercel.app"
 ];
 
 app.use(
